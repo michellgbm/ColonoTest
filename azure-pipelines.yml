@@ -1,0 +1,161 @@
+# ==========================================
+# TRIGGER
+# ==========================================
+
+trigger:
+  branches:
+    include:
+      - main
+
+
+# ==========================================
+# AGENT
+# ==========================================
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+
+# ==========================================
+# VARIABLES
+# ==========================================
+
+variables:
+  pythonVersion: '3.12'
+  artifactName: 'calculator-app'
+
+
+# ==========================================
+# CI - BUILD
+# ==========================================
+
+stages:
+
+- stage: Build
+  displayName: 'CI - Build'
+
+  jobs:
+
+  - job: BuildJob
+    displayName: 'Build Application'
+
+    steps:
+
+    - checkout: self
+
+    - task: UsePythonVersion@0
+      displayName: 'Configurar Python $(pythonVersion)'
+      inputs:
+        versionSpec: '$(pythonVersion)'
+
+    - script: |
+        python -m pip install --upgrade pip
+        python -m pip install -r requirements.txt
+      displayName: 'Instalar dependencias'
+
+    - script: |
+        python -m ruff check .
+      displayName: 'Linting con Ruff'
+
+    - script: |
+        python -m pytest
+      displayName: 'Ejecutar Unit Tests'
+
+    - publish: $(Build.SourcesDirectory)
+      artifact: $(artifactName)
+      displayName: 'Publicar Artifact'
+
+# ==========================================
+# CD - DEV
+# ==========================================
+
+- stage: DeployDev
+  displayName: 'CD - Deploy DEV'
+
+  dependsOn: Build
+
+  jobs:
+
+  - deployment: DeploymentDev
+    displayName: 'Deployment DEV'
+
+    environment: DEV
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - download: current
+            artifact: $(artifactName)
+
+          - script: |
+              echo "Desplegando calculator-app en DEV"
+              echo "Artifact descargado correctamente"
+              ls $(Pipeline.Workspace)/$(artifactName)
+            displayName: 'Deploy en DEV'
+
+
+# ==========================================
+# CD - QA
+# ==========================================
+
+- stage: DeployQA
+  displayName: 'CD - Deploy QA'
+
+  dependsOn: DeployDev
+
+  jobs:
+
+  - deployment: DeploymentQA
+    displayName: 'Deployment QA'
+
+    environment: QA
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - download: current
+            artifact: $(artifactName)
+
+          - script: |
+              echo "Desplegando calculator-app en QA"
+              echo "Validando deployment en QA"
+              ls $(Pipeline.Workspace)/$(artifactName)
+            displayName: 'Deploy en QA'
+
+
+# ==========================================
+# CD - PROD
+# ==========================================
+
+- stage: DeployProd
+  displayName: 'CD - Deploy PROD'
+
+  dependsOn: DeployQA
+
+  jobs:
+
+  - deployment: DeploymentProd
+    displayName: 'Deployment PROD'
+
+    environment: PROD
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+
+          - download: current
+            artifact: $(artifactName)
+
+          - script: |
+              echo "Desplegando calculator-app en PRODUCCION"
+              echo "Version desplegada correctamente"
+              ls $(Pipeline.Workspace)/$(artifactName)
+            displayName: 'Deploy en PROD'
